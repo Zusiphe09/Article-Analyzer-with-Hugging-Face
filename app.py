@@ -2,13 +2,36 @@
 import os
 import requests
 import gradio as gr
+from transformers import pipeline
 
 
-# Get API key from environment variable
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+# Get OpenRouter API key from environment variable
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
+# OpenRouter API
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Free OpenRouter model for summarization
 MODEL = "openrouter/free"
+
+
+# ============================================================
+# HUGGING FACE SENTIMENT ANALYSIS MODEL
+# ============================================================
+
+sentiment_pipeline = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english"
+)
+
+
+# ============================================================
+# OPENROUTER AI FUNCTION
+# ============================================================
 
 def ask_ai(prompt):
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -39,9 +62,10 @@ def ask_ai(prompt):
             timeout=60
         )
 
+        # Show the actual OpenRouter error
         if response.status_code != 200:
             return (
-                f"OpenRouter Error: {response.status_code}\n"
+                f"OpenRouter Error: {response.status_code}\n\n"
                 f"{response.text}"
             )
 
@@ -56,55 +80,256 @@ def ask_ai(prompt):
         return f"Error: {str(e)}"
 
 
+# ============================================================
+# SENTIMENT ANALYSIS
+# ============================================================
+
 def analyze_sentiment(article):
-    if not article.strip():
+
+    if not article or not article.strip():
+        return (
+            "Please paste an article.",
+            "",
+            ""
+        )
+
+    try:
+        # Analyze the article
+        # The model works best with shorter text,
+        # so we use the first 512 characters.
+        text = article[:512]
+
+        # Get both sentiment scores
+        results = sentiment_pipeline(
+            text,
+            top_k=2
+        )
+
+        # Handle different Transformers output formats
+        if results and isinstance(results[0], list):
+            results = results[0]
+
+        positive_score = 0
+        negative_score = 0
+
+        for result in results:
+
+            label = result["label"].upper()
+            score = result["score"] * 100
+
+            if label == "POSITIVE":
+                positive_score = score
+
+            elif label == "NEGATIVE":
+                negative_score = score
+
+        # Determine overall sentiment
+        if positive_score >= negative_score:
+            sentiment = "POSITIVE"
+            confidence = positive_score
+        else:
+            sentiment = "NEGATIVE"
+            confidence = negative_score
+
+        # Main sentiment result
+        result_text = f"""
+## Overall Sentiment: {sentiment}
+
+### Confidence: {confidence:.2f}%
+
+The model is **{confidence:.2f}% confident** that the article
+has a **{sentiment.lower()}** sentiment.
+"""
+
+        # Percentage breakdown
+        percentages = f"""
+### Sentiment Percentages
+
+**Positive:** {positive_score:.2f}%
+
+**Negative:** {negative_score:.2f}%
+"""
+
+        # Visual representation
+        visual = f"""
+### Confidence Breakdown
+
+**Positive — {positive_score:.2f}%**
+
+<progress value="{positive_score:.2f}" max="100"></progress>
+
+**Negative — {negative_score:.2f}%**
+
+<progress value="{negative_score:.2f}" max="100"></progress>
+"""
+
+        return result_text, percentages, visual
+
+    except Exception as e:
+
+        return (
+            f"Sentiment Analysis Error: {str(e)}",
+            "",
+            ""
+        )
+
+
+# ============================================================
+# ARTICLE SUMMARIZATION
+# ============================================================
+
+def summarize_article(article):
+
+    if not article or not article.strip():
         return "Please paste an article."
 
     prompt = f"""
-Analyze the sentiment of the following article.
+You are an AI article summarization assistant.
 
-Return:
-- Overall sentiment (Positive, Negative, or Neutral)
-- A short explanation
+Summarize the following article clearly and concisely.
+
+Requirements:
+
+- Identify the main topic.
+- Highlight the most important points.
+- Mention important benefits or opportunities.
+- Mention important challenges or risks.
+- Do not invent information.
+- Keep the summary easy to read.
+- Use paragraphs or bullet points where appropriate.
 
 Article:
+
 {article}
 """
 
     return ask_ai(prompt)
 
 
+# ============================================================
+# FULL ANALYSIS
+# ============================================================
+
 def full_analysis(article):
-    sentiment_result = analyze_sentiment(article)
+
+    if not article or not article.strip():
+        return "Please paste an article."
+
+    # Run sentiment analysis
+    sentiment_result, percentages, visual = analyze_sentiment(article)
+
+    # Generate summary
     summary_result = summarize_article(article)
 
+    # Combine everything
     return f"""
-SENTIMENT ANALYSIS
-==================
+# ARTICLE ANALYSIS
+
+---
+
+## SENTIMENT ANALYSIS
 
 {sentiment_result}
 
-ARTICLE SUMMARY
-===============
+{percentages}
+
+{visual}
+
+---
+
+## ARTICLE SUMMARY
 
 {summary_result}
 """
 
 
-# Build Gradio interface
-with gr.Blocks() as demo:
+# ============================================================
+# GRADIO INTERFACE
+# ============================================================
+
+with gr.Blocks(
+    title="Article Analyzer"
+) as demo:
+
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
 
     gr.Markdown(
         """
-        # Article Analyzer
+# 📰 Article Analyzer
 
-        Analyze articles using AI-powered sentiment analysis
-        and summarization.
-        """
+Analyze articles using **AI-powered sentiment analysis
+and summarization**.
+
+Paste an article below and choose an analysis option.
+"""
     )
 
-    # Summary Tab
+
+    # ========================================================
+    # SENTIMENT ANALYSIS TAB
+    # ========================================================
+
+    with gr.Tab("Sentiment Analysis"):
+
+        gr.Markdown(
+            """
+### Sentiment Analysis
+
+The application uses a pre-trained Hugging Face model
+to identify the sentiment of the article and provide
+a confidence score.
+"""
+        )
+
+        sentiment_input = gr.Textbox(
+            label="Article",
+            lines=15,
+            placeholder="Paste your article here..."
+        )
+
+        sentiment_button = gr.Button(
+            "Analyze Sentiment"
+        )
+
+        sentiment_result = gr.Markdown(
+            label="Sentiment Result"
+        )
+
+        sentiment_percentages = gr.Markdown(
+            label="Sentiment Percentages"
+        )
+
+        sentiment_visual = gr.Markdown(
+            label="Confidence Breakdown"
+        )
+
+        sentiment_button.click(
+            analyze_sentiment,
+            inputs=sentiment_input,
+            outputs=[
+                sentiment_result,
+                sentiment_percentages,
+                sentiment_visual
+            ]
+        )
+
+
+    # ========================================================
+    # SUMMARY TAB
+    # ========================================================
+
     with gr.Tab("Summarize"):
+
+        gr.Markdown(
+            """
+### Article Summarization
+
+OpenRouter is used to generate a clear and detailed
+summary of the article.
+"""
+        )
 
         summary_input = gr.Textbox(
             label="Article",
@@ -112,11 +337,12 @@ with gr.Blocks() as demo:
             placeholder="Paste your article here..."
         )
 
-        summary_button = gr.Button("Summarize")
+        summary_button = gr.Button(
+            "Generate Summary"
+        )
 
-        summary_output = gr.Textbox(
-            label="Summary",
-            lines=10
+        summary_output = gr.Markdown(
+            label="Summary"
         )
 
         summary_button.click(
@@ -125,30 +351,21 @@ with gr.Blocks() as demo:
             outputs=summary_output
         )
 
-    # Sentiment Analysis Tab
-    with gr.Tab("Sentiment Analysis"):
 
-        sentiment_input = gr.Textbox(
-            label="Article",
-            lines=15,
-            placeholder="Paste your article here..."
-        )
+    # ========================================================
+    # FULL ANALYSIS TAB
+    # ========================================================
 
-        sentiment_button = gr.Button("Analyze Sentiment")
-
-        sentiment_output = gr.Textbox(
-            label="Sentiment Result",
-            lines=10
-        )
-
-        sentiment_button.click(
-            analyze_sentiment,
-            inputs=sentiment_input,
-            outputs=sentiment_output
-        )
-
-    # Full Analysis Tab
     with gr.Tab("Full Analysis"):
+
+        gr.Markdown(
+            """
+### Full Article Analysis
+
+This option combines sentiment analysis and
+AI-powered summarization into one result.
+"""
+        )
 
         full_input = gr.Textbox(
             label="Article",
@@ -156,11 +373,12 @@ with gr.Blocks() as demo:
             placeholder="Paste your article here..."
         )
 
-        full_button = gr.Button("Analyze Article")
+        full_button = gr.Button(
+            "Analyze Article"
+        )
 
-        full_output = gr.Textbox(
-            label="Results",
-            lines=15
+        full_output = gr.Markdown(
+            label="Analysis Results"
         )
 
         full_button.click(
@@ -170,13 +388,34 @@ with gr.Blocks() as demo:
         )
 
 
-# Launch application
+    # ========================================================
+    # FOOTER
+    # ========================================================
+
+    gr.Markdown(
+        """
+---
+
+**Article Analyzer | Hugging Face + OpenRouter + Gradio**
+"""
+    )
+
+
+# ============================================================
+# LAUNCH APPLICATION
+# ============================================================
+
 if __name__ == "__main__":
 
     if not os.environ.get("OPENROUTER_API_KEY"):
         print("Warning: OPENROUTER_API_KEY is not set!")
 
-    port = int(os.environ.get("PORT", 7860))
+    port = int(
+        os.environ.get(
+            "PORT",
+            7860
+        )
+    )
 
     demo.launch(
         server_name="0.0.0.0",
