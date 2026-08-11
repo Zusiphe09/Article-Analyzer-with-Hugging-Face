@@ -3,17 +3,15 @@ import os
 import requests
 import gradio as gr
 
+
 # Get API key from environment variable
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
-# OpenRouter API settings
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "openai/gpt-4o-mini"
 
 
 def ask_ai(prompt):
-    """Send a prompt to OpenRouter and return the response."""
-
     if not OPENROUTER_API_KEY:
         return "Error: OPENROUTER_API_KEY is not set."
 
@@ -82,6 +80,23 @@ Article:
     return ask_ai(prompt)
 
 
+def full_analysis(article):
+    sentiment_result = analyze_sentiment(article)
+    summary_result = summarize_article(article)
+
+    return f"""
+SENTIMENT ANALYSIS
+==================
+
+{sentiment_result}
+
+ARTICLE SUMMARY
+===============
+
+{summary_result}
+"""
+
+
 # Build Gradio interface
 with gr.Blocks() as demo:
 
@@ -89,11 +104,12 @@ with gr.Blocks() as demo:
         """
         # Article Analyzer
 
-        Paste any article to get AI-powered summarization
-        and sentiment analysis.
+        Analyze articles using AI-powered sentiment analysis
+        and summarization.
         """
     )
 
+    # Summary Tab
     with gr.Tab("Summarize"):
 
         summary_input = gr.Textbox(
@@ -115,6 +131,7 @@ with gr.Blocks() as demo:
             outputs=summary_output
         )
 
+    # Sentiment Analysis Tab
     with gr.Tab("Sentiment Analysis"):
 
         sentiment_input = gr.Textbox(
@@ -135,65 +152,31 @@ with gr.Blocks() as demo:
             inputs=sentiment_input,
             outputs=sentiment_output
         )
-def full_analysis(text):
-    sentiment_result = analyze_sentiment(text)
-    summary_result = summarize_article(text)
 
-    return f"""
-SENTIMENT ANALYSIS
-==================
-{sentiment_result}
+    # Full Analysis Tab
+    with gr.Tab("Full Analysis"):
 
-ARTICLE SUMMARY
-===============
-{summary_result}
-"""
+        full_input = gr.Textbox(
+            label="Article",
+            lines=15,
+            placeholder="Paste your article here..."
+        )
 
+        full_button = gr.Button("Analyze Article")
 
-with gr.Tab("Article Summary"):
+        full_output = gr.Textbox(
+            label="Results",
+            lines=15
+        )
 
-    summary_input = gr.Textbox(
-        label="Article",
-        lines=15,
-        placeholder="Paste your article here..."
-    )
-
-    summary_button = gr.Button("Generate Summary")
-
-    summary_output = gr.Textbox(
-        label="Summary",
-        lines=10
-    )
-
-    summary_button.click(
-        summarize_article,
-        inputs=summary_input,
-        outputs=summary_output
-    )
+        full_button.click(
+            full_analysis,
+            inputs=full_input,
+            outputs=full_output
+        )
 
 
-with gr.Tab("Full Analysis"):
-
-    full_input = gr.Textbox(
-        label="Article",
-        lines=15,
-        placeholder="Paste your article here..."
-    )
-
-    full_button = gr.Button("Analyze Article")
-
-    full_output = gr.Textbox(
-        label="Results",
-        lines=15
-    )
-
-    full_button.click(
-        full_analysis,
-        inputs=full_input,
-        outputs=full_output
-    )
-
-# Launch the application
+# Launch application
 if __name__ == "__main__":
 
     if not os.environ.get("OPENROUTER_API_KEY"):
