@@ -1,11 +1,6 @@
 gradio>=4.44.0
-2
-transformers>=4.45.0
-3
+transformers>=4.45.0,<5.0.0
 torch>=2.3.0
-4
 python-dotenv
-5
 requests
-6
 openai
