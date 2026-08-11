@@ -20,10 +20,6 @@ def ask_ai(prompt):
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
 
     data = {
         "model": MODEL,
@@ -43,28 +39,21 @@ def ask_ai(prompt):
             timeout=60
         )
 
-        response.raise_for_status()
+        if response.status_code != 200:
+            return (
+                f"OpenRouter Error: {response.status_code}\n"
+                f"{response.text}"
+            )
 
         result = response.json()
 
         return result["choices"][0]["message"]["content"]
 
+    except requests.exceptions.RequestException as e:
+        return f"Request Error: {str(e)}"
+
     except Exception as e:
         return f"Error: {str(e)}"
-
-
-def summarize_article(article):
-    if not article.strip():
-        return "Please paste an article."
-
-    prompt = f"""
-Summarize the following article in clear and concise language.
-
-Article:
-{article}
-"""
-
-    return ask_ai(prompt)
 
 
 def analyze_sentiment(article):
