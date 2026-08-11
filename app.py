@@ -8,7 +8,7 @@ import gradio as gr
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "openai/gpt-4o-mini"
+MODEL = "meta-llama/llama-3.1-8b-instruct:free"
 
 
 def ask_ai(prompt):
