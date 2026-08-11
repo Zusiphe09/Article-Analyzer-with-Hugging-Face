@@ -142,15 +142,23 @@ with gr.Blocks(title="Article Analyzer") as demo:
 
 
 if __name__ == "__main__":
-    # Check if API key is set
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        print("⚠️  Warning: OPENROUTER_API_KEY is not set!")
-        print("Please set it using: set OPENROUTER_API_KEY=your-key-here")
-    
-    # Launch with share=True to create public link
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=True,  # This creates the public share link
-        debug=True
-    )
+2
+if not os.environ.get("OPENROUTER_API_KEY"):
+3
+print("Warning: OPENROUTER_API_KEY is not set!")
+4
+ 
+5
+port = int(os.environ.get("PORT", 7860))
+6
+ 
+7
+demo.launch(
+8
+server_name="0.0.0.0",
+9
+server_port=port,
+10
+debug=True
+11
+)
