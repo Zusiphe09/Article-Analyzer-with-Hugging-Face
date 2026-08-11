@@ -83,35 +83,29 @@ def ask_ai(prompt):
 # ============================================================
 # SENTIMENT ANALYSIS
 # ============================================================
-
 def analyze_sentiment(article):
 
     if not article or not article.strip():
-        return (
-            "Please paste an article.",
-            "",
-            ""
-        )
+        return "Please paste an article."
 
     try:
         # Analyze the article
-        # The model works best with shorter text,
-        # so we use the first 512 characters.
         text = article[:512]
 
-        # Get both sentiment scores
         results = sentiment_pipeline(
             text,
-            top_k=2
+            top_k=2,
+            truncation=True
         )
 
         # Handle different Transformers output formats
-        if results and isinstance(results[0], list):
+        if isinstance(results[0], list):
             results = results[0]
 
-        positive_score = 0
-        negative_score = 0
+        positive_score = 0.0
+        negative_score = 0.0
 
+        # Get the Positive and Negative scores
         for result in results:
 
             label = result["label"].upper()
@@ -123,7 +117,7 @@ def analyze_sentiment(article):
             elif label == "NEGATIVE":
                 negative_score = score
 
-        # Determine overall sentiment
+        # Only Positive or Negative
         if positive_score >= negative_score:
             sentiment = "POSITIVE"
             confidence = positive_score
@@ -131,48 +125,56 @@ def analyze_sentiment(article):
             sentiment = "NEGATIVE"
             confidence = negative_score
 
-        # Main sentiment result
-        result_text = f"""
-## Overall Sentiment: {sentiment}
+        # Create visual bars
+        positive_blocks = int(positive_score / 5)
+        negative_blocks = int(negative_score / 5)
 
-### Confidence: {confidence:.2f}%
+        positive_bar = (
+            "█" * positive_blocks +
+            "░" * (20 - positive_blocks)
+        )
 
-The model is **{confidence:.2f}% confident** that the article
-has a **{sentiment.lower()}** sentiment.
+        negative_bar = (
+            "█" * negative_blocks +
+            "░" * (20 - negative_blocks)
+        )
+
+        # Return the sentiment scores
+        return f"""
+# Sentiment Analysis
+
+## Overall Sentiment: **{sentiment}**
+
+### Confidence Score: **{confidence:.2f}%**
+
+The model is **{confidence:.2f}% confident** that the
+article has a **{sentiment.lower()}** sentiment.
+
+---
+
+## Sentiment Scores
+
+### Positive: **{positive_score:.2f}%**
+
+`{positive_bar}`
+
+### Negative: **{negative_score:.2f}%**
+
+`{negative_bar}`
+
+---
+
+**Model:**  
+`distilbert-base-uncased-finetuned-sst-2-english`
 """
-
-        # Percentage breakdown
-        percentages = f"""
-### Sentiment Percentages
-
-**Positive:** {positive_score:.2f}%
-
-**Negative:** {negative_score:.2f}%
-"""
-
-        # Visual representation
-        visual = f"""
-### Confidence Breakdown
-
-**Positive — {positive_score:.2f}%**
-
-<progress value="{positive_score:.2f}" max="100"></progress>
-
-**Negative — {negative_score:.2f}%**
-
-<progress value="{negative_score:.2f}" max="100"></progress>
-"""
-
-        return result_text, percentages, visual
 
     except Exception as e:
 
-        return (
-            f"Sentiment Analysis Error: {str(e)}",
-            "",
-            ""
-        )
+        return f"""
+# Sentiment Analysis Error
 
+{str(e)}
+"""
 
 # ============================================================
 # ARTICLE SUMMARIZATION
