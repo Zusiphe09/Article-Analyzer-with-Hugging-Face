@@ -135,7 +135,63 @@ with gr.Blocks() as demo:
             inputs=sentiment_input,
             outputs=sentiment_output
         )
+def full_analysis(text):
+    sentiment_result = analyze_sentiment(text)
+    summary_result = summarize_article(text)
 
+    return f"""
+SENTIMENT ANALYSIS
+==================
+{sentiment_result}
+
+ARTICLE SUMMARY
+===============
+{summary_result}
+"""
+
+
+with gr.Tab("Article Summary"):
+
+    summary_input = gr.Textbox(
+        label="Article",
+        lines=15,
+        placeholder="Paste your article here..."
+    )
+
+    summary_button = gr.Button("Generate Summary")
+
+    summary_output = gr.Textbox(
+        label="Summary",
+        lines=10
+    )
+
+    summary_button.click(
+        summarize_article,
+        inputs=summary_input,
+        outputs=summary_output
+    )
+
+
+with gr.Tab("Full Analysis"):
+
+    full_input = gr.Textbox(
+        label="Article",
+        lines=15,
+        placeholder="Paste your article here..."
+    )
+
+    full_button = gr.Button("Analyze Article")
+
+    full_output = gr.Textbox(
+        label="Results",
+        lines=15
+    )
+
+    full_button.click(
+        full_analysis,
+        inputs=full_input,
+        outputs=full_output
+    )
 
 # Launch the application
 if __name__ == "__main__":
