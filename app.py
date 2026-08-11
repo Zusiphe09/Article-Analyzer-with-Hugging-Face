@@ -12,9 +12,15 @@ MODEL = "openai/gpt-4o-mini"
 
 
 def ask_ai(prompt):
-    if not OPENROUTER_API_KEY:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    if not api_key:
         return "Error: OPENROUTER_API_KEY is not set."
 
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
