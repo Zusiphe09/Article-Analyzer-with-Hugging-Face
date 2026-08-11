@@ -1,4 +1,11 @@
-transformers<5.0.0
-gradio==6.20.0
-openrouter==1.0.18
-torch
+gradio>=4.44.0
+2
+transformers>=4.45.0
+3
+torch>=2.3.0
+4
+python-dotenv
+5
+requests
+6
+openai
