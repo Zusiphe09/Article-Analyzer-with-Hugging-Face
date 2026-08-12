@@ -1,4 +1,3 @@
-
 import os
 import requests
 import gradio as gr
@@ -34,6 +33,7 @@ sentiment_pipeline = pipeline(
 # ============================================================
 
 def ask_ai(prompt):
+
     api_key = os.environ.get("OPENROUTER_API_KEY")
 
     if not api_key:
@@ -55,6 +55,7 @@ def ask_ai(prompt):
     }
 
     try:
+
         response = requests.post(
             API_URL,
             headers=headers,
@@ -62,7 +63,6 @@ def ask_ai(prompt):
             timeout=60
         )
 
-        # Show the actual OpenRouter error
         if response.status_code != 200:
             return (
                 f"OpenRouter Error: {response.status_code}\n\n"
@@ -74,9 +74,11 @@ def ask_ai(prompt):
         return result["choices"][0]["message"]["content"]
 
     except requests.exceptions.RequestException as e:
+
         return f"Request Error: {str(e)}"
 
     except Exception as e:
+
         return f"Error: {str(e)}"
 
 
@@ -94,6 +96,8 @@ def analyze_sentiment(article):
         )
 
     try:
+
+        # Analyze the first 512 characters
         text = article[:512]
 
         results = sentiment_pipeline(
@@ -102,12 +106,14 @@ def analyze_sentiment(article):
             truncation=True
         )
 
+        # Handle different Transformers output formats
         if isinstance(results[0], list):
             results = results[0]
 
         positive_score = 0.0
         negative_score = 0.0
 
+        # Extract Positive and Negative scores
         for result in results:
 
             label = result["label"].upper()
@@ -121,9 +127,12 @@ def analyze_sentiment(article):
 
         # Determine overall sentiment
         if positive_score >= negative_score:
+
             sentiment = "POSITIVE"
             confidence = positive_score
+
         else:
+
             sentiment = "NEGATIVE"
             confidence = negative_score
 
@@ -141,14 +150,14 @@ def analyze_sentiment(article):
             "░" * (20 - negative_blocks)
         )
 
-        # Sentiment result
+        # Overall sentiment
         sentiment_result = f"""
 ## Overall Sentiment: **{sentiment}**
 
 ### Confidence Score: **{confidence:.2f}%**
 """
 
-        # Percentage results
+        # Sentiment percentages
         sentiment_percentages = f"""
 ### Sentiment Scores
 
@@ -157,7 +166,7 @@ def analyze_sentiment(article):
 **Negative: {negative_score:.2f}%**
 """
 
-        # Visual representation
+        # Visual breakdown
         sentiment_visual = f"""
 ### Sentiment Breakdown
 
@@ -183,6 +192,8 @@ def analyze_sentiment(article):
             "",
             ""
         )
+
+
 # ============================================================
 # ARTICLE SUMMARIZATION
 # ============================================================
@@ -212,6 +223,7 @@ Article:
 """
 
     return ask_ai(prompt)
+
 
 # ============================================================
 # FULL ANALYSIS
@@ -258,16 +270,16 @@ with gr.Blocks(
     title="Article Analyzer"
 ) as demo:
 
-    # --------------------------------------------------------
+    # ========================================================
     # HEADER
-    # --------------------------------------------------------
+    # ========================================================
 
     gr.Markdown(
         """
 # 📰 Article Analyzer
 
-Analyze articles using **AI-powered sentiment analysis
-and summarization**.
+Analyze articles using **AI-powered sentiment analysis**
+and **summarization**.
 
 Paste an article below and choose an analysis option.
 """
@@ -300,17 +312,11 @@ a confidence score.
             "Analyze Sentiment"
         )
 
-        sentiment_result = gr.Markdown(
-            label="Sentiment Result"
-        )
+        sentiment_result = gr.Markdown()
 
-        sentiment_percentages = gr.Markdown(
-            label="Sentiment Percentages"
-        )
+        sentiment_percentages = gr.Markdown()
 
-        sentiment_visual = gr.Markdown(
-            label="Confidence Breakdown"
-        )
+        sentiment_visual = gr.Markdown()
 
         sentiment_button.click(
             analyze_sentiment,
@@ -348,9 +354,7 @@ summary of the article.
             "Generate Summary"
         )
 
-        summary_output = gr.Markdown(
-            label="Summary"
-        )
+        summary_output = gr.Markdown()
 
         summary_button.click(
             summarize_article,
@@ -384,9 +388,7 @@ AI-powered summarization into one result.
             "Analyze Article"
         )
 
-        full_output = gr.Markdown(
-            label="Analysis Results"
-        )
+        full_output = gr.Markdown()
 
         full_button.click(
             full_analysis,
