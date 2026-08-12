@@ -83,13 +83,17 @@ def ask_ai(prompt):
 # ============================================================
 # SENTIMENT ANALYSIS
 # ============================================================
+
 def analyze_sentiment(article):
 
     if not article or not article.strip():
-        return "Please paste an article."
+        return (
+            "Please paste an article.",
+            "",
+            ""
+        )
 
     try:
-        # Analyze the article
         text = article[:512]
 
         results = sentiment_pipeline(
@@ -98,14 +102,12 @@ def analyze_sentiment(article):
             truncation=True
         )
 
-        # Handle different Transformers output formats
         if isinstance(results[0], list):
             results = results[0]
 
         positive_score = 0.0
         negative_score = 0.0
 
-        # Get the Positive and Negative scores
         for result in results:
 
             label = result["label"].upper()
@@ -117,7 +119,7 @@ def analyze_sentiment(article):
             elif label == "NEGATIVE":
                 negative_score = score
 
-        # Only Positive or Negative
+        # Determine overall sentiment
         if positive_score >= negative_score:
             sentiment = "POSITIVE"
             confidence = positive_score
@@ -139,73 +141,48 @@ def analyze_sentiment(article):
             "░" * (20 - negative_blocks)
         )
 
-        # Return the sentiment scores
-        return f"""
-# Sentiment Analysis
-
+        # Sentiment result
+        sentiment_result = f"""
 ## Overall Sentiment: **{sentiment}**
 
 ### Confidence Score: **{confidence:.2f}%**
+"""
 
-The model is **{confidence:.2f}% confident** that the
-article has a **{sentiment.lower()}** sentiment.
+        # Percentage results
+        sentiment_percentages = f"""
+### Sentiment Scores
 
----
+**Positive: {positive_score:.2f}%**
 
-## Sentiment Scores
+**Negative: {negative_score:.2f}%**
+"""
 
-### Positive: **{positive_score:.2f}%**
+        # Visual representation
+        sentiment_visual = f"""
+### Sentiment Breakdown
+
+**Positive**
 
 `{positive_bar}`
 
-### Negative: **{negative_score:.2f}%**
+**Negative**
 
 `{negative_bar}`
-
----
-
-**Model:**  
-`distilbert-base-uncased-finetuned-sst-2-english`
 """
+
+        return (
+            sentiment_result,
+            sentiment_percentages,
+            sentiment_visual
+        )
 
     except Exception as e:
 
-        return f"""
-# Sentiment Analysis Error
-
-{str(e)}
-"""
-
-# ============================================================
-# ARTICLE SUMMARIZATION
-# ============================================================
-
-def summarize_article(article):
-
-    if not article or not article.strip():
-        return "Please paste an article."
-
-    prompt = f"""
-You are an AI article summarization assistant.
-
-Summarize the following article clearly and concisely.
-
-Requirements:
-
-- Identify the main topic.
-- Highlight the most important points.
-- Mention important benefits or opportunities.
-- Mention important challenges or risks.
-- Do not invent information.
-- Keep the summary easy to read.
-- Use paragraphs or bullet points where appropriate.
-
-Article:
-
-{article}
-"""
-
-    return ask_ai(prompt)
+        return (
+            f"Error: {str(e)}",
+            "",
+            ""
+        )
 
 
 # ============================================================
@@ -220,10 +197,10 @@ def full_analysis(article):
     # Run sentiment analysis
     sentiment_result, percentages, visual = analyze_sentiment(article)
 
-    # Generate summary
+    # Generate article summary
     summary_result = summarize_article(article)
 
-    # Combine everything
+    # Combine sentiment and summary
     return f"""
 # ARTICLE ANALYSIS
 
