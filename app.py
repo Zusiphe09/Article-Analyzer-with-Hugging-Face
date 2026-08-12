@@ -183,7 +183,35 @@ def analyze_sentiment(article):
             "",
             ""
         )
+# ============================================================
+# ARTICLE SUMMARIZATION
+# ============================================================
 
+def summarize_article(article):
+
+    if not article or not article.strip():
+        return "Please paste an article."
+
+    prompt = f"""
+You are an AI article summarization assistant.
+
+Summarize the following article clearly and concisely.
+
+Requirements:
+
+- Identify the main topic.
+- Highlight the most important points.
+- Mention important benefits or opportunities.
+- Mention important challenges or risks.
+- Do not invent information.
+- Keep the summary easy to read.
+
+Article:
+
+{article}
+"""
+
+    return ask_ai(prompt)
 
 # ============================================================
 # FULL ANALYSIS
