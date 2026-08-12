@@ -1,20 +1,28 @@
 import os
 import requests
-import gradio as gr
+import streamlit as st
 from transformers import pipeline
+
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="Article Analyzer",
+    page_icon="📰",
+    layout="wide"
+)
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-# Get OpenRouter API key from environment variable
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
-# OpenRouter API
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Free OpenRouter model for summarization
 MODEL = "openrouter/free"
 
 
@@ -22,10 +30,16 @@ MODEL = "openrouter/free"
 # HUGGING FACE SENTIMENT ANALYSIS MODEL
 # ============================================================
 
-sentiment_pipeline = pipeline(
-    "sentiment-analysis",
-    model="distilbert-base-uncased-finetuned-sst-2-english"
-)
+@st.cache_resource
+def load_sentiment_model():
+
+    return pipeline(
+        "sentiment-analysis",
+        model="distilbert-base-uncased-finetuned-sst-2-english"
+    )
+
+
+sentiment_pipeline = load_sentiment_model()
 
 
 # ============================================================
@@ -64,6 +78,7 @@ def ask_ai(prompt):
         )
 
         if response.status_code != 200:
+
             return (
                 f"OpenRouter Error: {response.status_code}\n\n"
                 f"{response.text}"
@@ -89,15 +104,14 @@ def ask_ai(prompt):
 def analyze_sentiment(article):
 
     if not article or not article.strip():
-        return (
-            "Please paste an article.",
-            "",
-            ""
-        )
+
+        return {
+            "error": "Please paste an article."
+        }
 
     try:
 
-        # Analyze the first 512 characters
+        # Analyze first 512 characters
         text = article[:512]
 
         results = sentiment_pipeline(
@@ -113,85 +127,46 @@ def analyze_sentiment(article):
         positive_score = 0.0
         negative_score = 0.0
 
-        # Extract Positive and Negative scores
+        # Extract sentiment scores
         for result in results:
 
             label = result["label"].upper()
+
             score = result["score"] * 100
 
             if label == "POSITIVE":
+
                 positive_score = score
 
             elif label == "NEGATIVE":
+
                 negative_score = score
 
         # Determine overall sentiment
         if positive_score >= negative_score:
 
             sentiment = "POSITIVE"
+
             confidence = positive_score
 
         else:
 
             sentiment = "NEGATIVE"
+
             confidence = negative_score
 
-        # Create visual bars
-        positive_blocks = int(positive_score / 5)
-        negative_blocks = int(negative_score / 5)
-
-        positive_bar = (
-            "█" * positive_blocks +
-            "░" * (20 - positive_blocks)
-        )
-
-        negative_bar = (
-            "█" * negative_blocks +
-            "░" * (20 - negative_blocks)
-        )
-
-        # Overall sentiment
-        sentiment_result = f"""
-## Overall Sentiment: **{sentiment}**
-
-### Confidence Score: **{confidence:.2f}%**
-"""
-
-        # Sentiment percentages
-        sentiment_percentages = f"""
-### Sentiment Scores
-
-**Positive: {positive_score:.2f}%**
-
-**Negative: {negative_score:.2f}%**
-"""
-
-        # Visual breakdown
-        sentiment_visual = f"""
-### Sentiment Breakdown
-
-**Positive**
-
-`{positive_bar}`
-
-**Negative**
-
-`{negative_bar}`
-"""
-
-        return (
-            sentiment_result,
-            sentiment_percentages,
-            sentiment_visual
-        )
+        return {
+            "sentiment": sentiment,
+            "confidence": confidence,
+            "positive": positive_score,
+            "negative": negative_score
+        }
 
     except Exception as e:
 
-        return (
-            f"Error: {str(e)}",
-            "",
-            ""
-        )
+        return {
+            "error": str(e)
+        }
 
 
 # ============================================================
@@ -201,6 +176,7 @@ def analyze_sentiment(article):
 def summarize_article(article):
 
     if not article or not article.strip():
+
         return "Please paste an article."
 
     prompt = f"""
@@ -231,203 +207,374 @@ Article:
 
 def full_analysis(article):
 
-    if not article or not article.strip():
-        return "Please paste an article."
+    sentiment_result = analyze_sentiment(article)
 
-    # Run sentiment analysis
-    sentiment_result, percentages, visual = analyze_sentiment(article)
+    if "error" in sentiment_result:
 
-    # Generate article summary
+        return (
+            sentiment_result["error"],
+            ""
+        )
+
     summary_result = summarize_article(article)
 
-    # Combine sentiment and summary
-    return f"""
-# ARTICLE ANALYSIS
-
----
-
-## SENTIMENT ANALYSIS
-
-{sentiment_result}
-
-{percentages}
-
-{visual}
-
----
-
-## ARTICLE SUMMARY
-
-{summary_result}
-"""
+    return (
+        sentiment_result,
+        summary_result
+    )
 
 
 # ============================================================
-# GRADIO INTERFACE
+# HEADER
 # ============================================================
 
-with gr.Blocks(
-    title="Article Analyzer"
-) as demo:
+st.title("📰 Article Analyzer")
 
-    # ========================================================
-    # HEADER
-    # ========================================================
-
-    gr.Markdown(
-        """
-# 📰 Article Analyzer
-
+st.markdown(
+    """
 Analyze articles using **AI-powered sentiment analysis**
-and **summarization**.
+and **article summarization**.
 
 Paste an article below and choose an analysis option.
 """
-    )
+)
 
 
-    # ========================================================
-    # SENTIMENT ANALYSIS TAB
-    # ========================================================
+# ============================================================
+# TABS
+# ============================================================
 
-    with gr.Tab("Sentiment Analysis"):
-
-        gr.Markdown(
-            """
-### Sentiment Analysis
-
-The application uses a pre-trained Hugging Face model
-to identify the sentiment of the article and provide
-a confidence score.
-"""
-        )
-
-        sentiment_input = gr.Textbox(
-            label="Article",
-            lines=15,
-            placeholder="Paste your article here..."
-        )
-
-        sentiment_button = gr.Button(
-            "Analyze Sentiment"
-        )
-
-        sentiment_result = gr.Markdown()
-
-        sentiment_percentages = gr.Markdown()
-
-        sentiment_visual = gr.Markdown()
-
-        sentiment_button.click(
-            analyze_sentiment,
-            inputs=sentiment_input,
-            outputs=[
-                sentiment_result,
-                sentiment_percentages,
-                sentiment_visual
-            ]
-        )
+tab1, tab2, tab3 = st.tabs(
+    [
+        "📊 Sentiment Analysis",
+        "📝 Summarize",
+        "🔍 Full Analysis"
+    ]
+)
 
 
-    # ========================================================
-    # SUMMARY TAB
-    # ========================================================
+# ============================================================
+# SENTIMENT ANALYSIS TAB
+# ============================================================
 
-    with gr.Tab("Summarize"):
+with tab1:
 
-        gr.Markdown(
-            """
-### Article Summarization
+    st.subheader("Sentiment Analysis")
 
-OpenRouter is used to generate a clear and detailed
-summary of the article.
-"""
-        )
-
-        summary_input = gr.Textbox(
-            label="Article",
-            lines=15,
-            placeholder="Paste your article here..."
-        )
-
-        summary_button = gr.Button(
-            "Generate Summary"
-        )
-
-        summary_output = gr.Markdown()
-
-        summary_button.click(
-            summarize_article,
-            inputs=summary_input,
-            outputs=summary_output
-        )
-
-
-    # ========================================================
-    # FULL ANALYSIS TAB
-    # ========================================================
-
-    with gr.Tab("Full Analysis"):
-
-        gr.Markdown(
-            """
-### Full Article Analysis
-
-This option combines sentiment analysis and
-AI-powered summarization into one result.
-"""
-        )
-
-        full_input = gr.Textbox(
-            label="Article",
-            lines=15,
-            placeholder="Paste your article here..."
-        )
-
-        full_button = gr.Button(
-            "Analyze Article"
-        )
-
-        full_output = gr.Markdown()
-
-        full_button.click(
-            full_analysis,
-            inputs=full_input,
-            outputs=full_output
-        )
-
-
-    # ========================================================
-    # FOOTER
-    # ========================================================
-
-    gr.Markdown(
+    st.write(
         """
----
-
-**Article Analyzer | Hugging Face + OpenRouter + Gradio**
-"""
+        Analyze the sentiment of an article using a
+        pre-trained Hugging Face model.
+        
+        The model provides:
+        - Positive sentiment percentage
+        - Negative sentiment percentage
+        - Overall sentiment
+        - Confidence score
+        """
     )
+
+    sentiment_input = st.text_area(
+        "Article",
+        height=300,
+        placeholder="Paste your article here..."
+    )
+
+    if st.button(
+        "Analyze Sentiment",
+        key="sentiment_button"
+    ):
+
+        if not sentiment_input.strip():
+
+            st.warning("Please paste an article.")
+
+        else:
+
+            with st.spinner("Analyzing sentiment..."):
+
+                result = analyze_sentiment(
+                    sentiment_input
+                )
+
+            if "error" in result:
+
+                st.error(result["error"])
+
+            else:
+
+                sentiment = result["sentiment"]
+
+                confidence = result["confidence"]
+
+                positive = result["positive"]
+
+                negative = result["negative"]
+
+
+                # Overall sentiment
+                st.subheader("Overall Sentiment")
+
+                if sentiment == "POSITIVE":
+
+                    st.success(
+                        f"🟢 {sentiment}"
+                    )
+
+                else:
+
+                    st.error(
+                        f"🔴 {sentiment}"
+                    )
+
+
+                # Confidence
+                st.subheader("Confidence Score")
+
+                st.metric(
+                    "Confidence",
+                    f"{confidence:.2f}%"
+                )
+
+
+                # Sentiment scores
+                st.subheader("Sentiment Scores")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+
+                    st.metric(
+                        "Positive",
+                        f"{positive:.2f}%"
+                    )
+
+                    st.progress(
+                        min(positive / 100, 1.0)
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Negative",
+                        f"{negative:.2f}%"
+                    )
+
+                    st.progress(
+                        min(negative / 100, 1.0)
+                    )
+
+
+                # Explanation
+                st.info(
+                    f"""
+                    The model is **{confidence:.2f}% confident**
+                    that this article has a
+                    **{sentiment.lower()}** sentiment.
+                    """
+                )
+
+
+                # Model information
+                st.caption(
+                    "Model: "
+                    "distilbert-base-uncased-finetuned-sst-2-english"
+                )
 
 
 # ============================================================
-# LAUNCH APPLICATION
+# SUMMARIZATION TAB
 # ============================================================
 
-if __name__ == "__main__":
+with tab2:
 
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        print("Warning: OPENROUTER_API_KEY is not set!")
+    st.subheader("Article Summarization")
 
-    port = int(
-        os.environ.get(
-            "PORT",
-            7860
-        )
+    st.write(
+        """
+        Generate a clear and concise summary of an article
+        using OpenRouter AI.
+        """
     )
 
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        debug=True
+    summary_input = st.text_area(
+        "Article",
+        height=300,
+        placeholder="Paste your article here...",
+        key="summary_input"
     )
+
+    if st.button(
+        "Generate Summary",
+        key="summary_button"
+    ):
+
+        if not summary_input.strip():
+
+            st.warning("Please paste an article.")
+
+        else:
+
+            with st.spinner(
+                "Generating article summary..."
+            ):
+
+                summary_result = summarize_article(
+                    summary_input
+                )
+
+            st.subheader("Article Summary")
+
+            st.markdown(summary_result)
+
+
+# ============================================================
+# FULL ANALYSIS TAB
+# ============================================================
+
+with tab3:
+
+    st.subheader("Full Article Analysis")
+
+    st.write(
+        """
+        Perform both sentiment analysis and AI-powered
+        article summarization.
+        """
+    )
+
+    full_input = st.text_area(
+        "Article",
+        height=300,
+        placeholder="Paste your article here...",
+        key="full_input"
+    )
+
+    if st.button(
+        "Analyze Article",
+        key="full_button"
+    ):
+
+        if not full_input.strip():
+
+            st.warning("Please paste an article.")
+
+        else:
+
+            with st.spinner(
+                "Performing full article analysis..."
+            ):
+
+                sentiment_result = analyze_sentiment(
+                    full_input
+                )
+
+                summary_result = summarize_article(
+                    full_input
+                )
+
+
+            # ------------------------------------------------
+            # SENTIMENT RESULTS
+            # ------------------------------------------------
+
+            st.divider()
+
+            st.header("📊 Sentiment Analysis")
+
+            if "error" in sentiment_result:
+
+                st.error(
+                    sentiment_result["error"]
+                )
+
+            else:
+
+                sentiment = sentiment_result["sentiment"]
+
+                confidence = sentiment_result["confidence"]
+
+                positive = sentiment_result["positive"]
+
+                negative = sentiment_result["negative"]
+
+
+                if sentiment == "POSITIVE":
+
+                    st.success(
+                        f"Overall Sentiment: {sentiment}"
+                    )
+
+                else:
+
+                    st.error(
+                        f"Overall Sentiment: {sentiment}"
+                    )
+
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+
+                    st.metric(
+                        "Confidence",
+                        f"{confidence:.2f}%"
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Positive",
+                        f"{positive:.2f}%"
+                    )
+
+                with col3:
+
+                    st.metric(
+                        "Negative",
+                        f"{negative:.2f}%"
+                    )
+
+
+                st.subheader(
+                    "Sentiment Breakdown"
+                )
+
+                st.write(
+                    f"Positive: {positive:.2f}%"
+                )
+
+                st.progress(
+                    min(positive / 100, 1.0)
+                )
+
+                st.write(
+                    f"Negative: {negative:.2f}%"
+                )
+
+                st.progress(
+                    min(negative / 100, 1.0)
+                )
+
+
+            # ------------------------------------------------
+            # SUMMARY
+            # ------------------------------------------------
+
+            st.divider()
+
+            st.header("📝 Article Summary")
+
+            st.markdown(summary_result)
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "Article Analyzer | "
+    "Hugging Face + OpenRouter + Streamlit"
+)
