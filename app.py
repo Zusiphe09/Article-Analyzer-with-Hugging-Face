@@ -48,7 +48,12 @@ sentiment_pipeline = load_sentiment_model()
 
 def ask_ai(prompt):
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    # Try Streamlit Cloud secrets first
+    try:
+        api_key = st.secrets["OPENROUTER_API_KEY"]
+    except Exception:
+        # Fall back to environment variable
+        api_key = os.environ.get("OPENROUTER_API_KEY")
 
     if not api_key:
         return "Error: OPENROUTER_API_KEY is not set."
@@ -78,7 +83,6 @@ def ask_ai(prompt):
         )
 
         if response.status_code != 200:
-
             return (
                 f"OpenRouter Error: {response.status_code}\n\n"
                 f"{response.text}"
@@ -95,7 +99,6 @@ def ask_ai(prompt):
     except Exception as e:
 
         return f"Error: {str(e)}"
-
 
 # ============================================================
 # SENTIMENT ANALYSIS
