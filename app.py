@@ -1,7 +1,23 @@
 import os
+import html
+from io import BytesIO
+
 import requests
 import streamlit as st
 from transformers import pipeline
+
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer
+)
+from reportlab.lib.styles import (
+    getSampleStyleSheet,
+    ParagraphStyle
+)
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.units import mm
 
 
 # ============================================================
@@ -24,7 +40,7 @@ MODEL = "openrouter/free"
 
 
 # ============================================================
-# LOAD SENTIMENT MODEL
+# LOAD HUGGING FACE SENTIMENT MODEL
 # ============================================================
 
 @st.cache_resource
@@ -45,6 +61,7 @@ sentiment_pipeline = load_sentiment_model()
 
 def get_api_key():
 
+    # Streamlit Cloud Secrets
     try:
 
         api_key = st.secrets["OPENROUTER_API_KEY"]
@@ -55,6 +72,7 @@ def get_api_key():
     except Exception:
         pass
 
+    # Local environment variable
     return os.environ.get("OPENROUTER_API_KEY")
 
 
@@ -70,12 +88,10 @@ def ask_ai(prompt):
 
         return "Error: OPENROUTER_API_KEY is not set."
 
-
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-
 
     data = {
         "model": MODEL,
@@ -87,7 +103,6 @@ def ask_ai(prompt):
         ]
     }
 
-
     try:
 
         response = requests.post(
@@ -97,7 +112,6 @@ def ask_ai(prompt):
             timeout=60
         )
 
-
         if response.status_code != 200:
 
             return (
@@ -105,17 +119,13 @@ def ask_ai(prompt):
                 f"{response.text}"
             )
 
-
         result = response.json()
 
-
         return result["choices"][0]["message"]["content"]
-
 
     except requests.exceptions.RequestException as e:
 
         return f"Request Error: {str(e)}"
-
 
     except Exception as e:
 
@@ -132,11 +142,11 @@ def detect_language(article):
 
         return "Unknown"
 
-
     prompt = f"""
 Detect the language of the following article.
 
-Return ONLY the name of the language.
+Return ONLY the language name.
+
 Do not provide an explanation.
 
 Article:
@@ -144,19 +154,17 @@ Article:
 {article[:3000]}
 """
 
-
     result = ask_ai(prompt)
 
     if result.startswith("Error"):
 
         return "Unknown"
 
-
     return result.strip()
 
 
 # ============================================================
-# MULTILINGUAL SENTIMENT ANALYSIS
+# SENTIMENT ANALYSIS
 # ============================================================
 
 def analyze_sentiment(article):
@@ -167,26 +175,17 @@ def analyze_sentiment(article):
             "error": "Please paste an article."
         }
 
-
     try:
 
-        # Detect language first
         language = detect_language(article)
 
-
         # ----------------------------------------------------
-        # English sentiment model
+        # English
         # ----------------------------------------------------
 
-        english_languages = [
-            "english"
-        ]
-
-
-        if language.lower() in english_languages:
+        if language.lower() == "english":
 
             text = article[:512]
-
 
             results = sentiment_pipeline(
                 text,
@@ -194,15 +193,12 @@ def analyze_sentiment(article):
                 truncation=True
             )
 
-
             if isinstance(results[0], list):
 
                 results = results[0]
 
-
             positive_score = 0.0
             negative_score = 0.0
-
 
             for result in results:
 
@@ -210,82 +206,68 @@ def analyze_sentiment(article):
 
                 score = result["score"] * 100
 
-
                 if label == "POSITIVE":
 
                     positive_score = score
-
 
                 elif label == "NEGATIVE":
 
                     negative_score = score
 
-
             if positive_score >= negative_score:
 
                 sentiment = "POSITIVE"
-
                 confidence = positive_score
 
             else:
 
                 sentiment = "NEGATIVE"
-
                 confidence = negative_score
 
-
         # ----------------------------------------------------
-        # Multilingual AI sentiment analysis
+        # Other languages
         # ----------------------------------------------------
 
         else:
 
             prompt = f"""
-Analyze the sentiment of the following article.
+Analyze the sentiment of this article.
 
 The article may be written in any language.
 
-Return the following information:
+Only use these two sentiment categories:
 
-Overall Sentiment: POSITIVE or NEGATIVE
-Positive Score: a number between 0 and 100
-Negative Score: a number between 0 and 100
-Confidence Score: a number between 0 and 100
+POSITIVE
+NEGATIVE
 
-The positive and negative scores should add up to approximately
-100.
+Do NOT return NEUTRAL.
 
-Do not return NEUTRAL.
-
-Return the result in this exact format:
+Return exactly:
 
 Overall Sentiment: POSITIVE
 Positive Score: 75.00
 Negative Score: 25.00
 Confidence Score: 75.00
 
+The positive and negative scores should add up to
+approximately 100.
+
 Article:
 
 {article[:6000]}
 """
 
-
             ai_result = ask_ai(prompt)
-
 
             sentiment = "POSITIVE"
 
             positive_score = 50.0
-
             negative_score = 50.0
-
             confidence = 50.0
-
 
             for line in ai_result.splitlines():
 
                 line = line.strip()
-
 
                 if line.lower().startswith(
                     "overall sentiment:"
@@ -296,7 +278,6 @@ Article:
                         1
                     )[1].strip().upper()
 
-
                     if "NEGATIVE" in value:
 
                         sentiment = "NEGATIVE"
@@ -304,7 +285,6 @@ Article:
                     else:
 
                         sentiment = "POSITIVE"
-
 
                 elif line.lower().startswith(
                     "positive score:"
@@ -323,7 +303,6 @@ Article:
 
                         pass
 
-
                 elif line.lower().startswith(
                     "negative score:"
                 ):
@@ -340,7 +319,6 @@ Article:
                     except ValueError:
 
                         pass
-
 
                 elif line.lower().startswith(
                     "confidence score:"
@@ -359,24 +337,20 @@ Article:
 
                         pass
 
-
             positive_score = max(
                 0,
                 min(100, positive_score)
             )
-
 
             negative_score = max(
                 0,
                 min(100, negative_score)
             )
 
-
             confidence = max(
                 0,
                 min(100, confidence)
             )
-
 
         return {
             "language": language,
@@ -385,7 +359,6 @@ Article:
             "positive": positive_score,
             "negative": negative_score
         }
-
 
     except Exception as e:
 
@@ -403,7 +376,6 @@ def summarize_article(article):
     if not article or not article.strip():
 
         return "Please paste an article."
-
 
     prompt = f"""
 You are an AI article summarization assistant.
@@ -430,6 +402,79 @@ Article:
 {article}
 """
 
+    return ask_ai(prompt)
+
+
+# ============================================================
+# AI PARAPHRASER
+# ============================================================
+
+def paraphrase_article(article, style):
+
+    if not article or not article.strip():
+
+        return "Please paste text to paraphrase."
+
+    style_instructions = {
+
+        "Standard": """
+Rewrite the text naturally while preserving the original
+meaning, facts, and important details.
+""",
+
+        "Simple": """
+Rewrite the text using simple, clear language that is easy
+for a general reader to understand.
+""",
+
+        "Professional": """
+Rewrite the text using professional and polished language
+suitable for business or workplace communication.
+""",
+
+        "Academic": """
+Rewrite the text using formal academic language while
+preserving the original meaning and factual information.
+Do not add unsupported information.
+""",
+
+        "Concise": """
+Rewrite the text more concisely while preserving the
+important meaning and key information.
+"""
+    }
+
+    selected_instruction = style_instructions.get(
+        style,
+        style_instructions["Standard"]
+    )
+
+    prompt = f"""
+You are an AI paraphrasing assistant.
+
+Paraphrase the following text.
+
+{selected_instruction}
+
+The text may be written in any language.
+
+Keep the paraphrased version in the SAME LANGUAGE as the
+original text.
+
+Do not translate the text.
+
+Do not add new facts.
+
+Do not remove important information.
+
+Do not mention that the text was paraphrased.
+
+Return only the paraphrased text.
+
+Original text:
+
+{article}
+"""
 
     return ask_ai(prompt)
 
@@ -453,15 +498,9 @@ def generate_citation(
     date = date.strip()
     url = url.strip()
 
-
     if not title:
 
         return "Please enter the article title."
-
-
-    # --------------------------------------------------------
-    # APA 7
-    # --------------------------------------------------------
 
     if style == "APA 7":
 
@@ -470,22 +509,12 @@ def generate_citation(
             f"{title}. {publication}. {url}"
         )
 
-
-    # --------------------------------------------------------
-    # MLA 9
-    # --------------------------------------------------------
-
     elif style == "MLA 9":
 
         citation = (
             f'{author}. "{title}." '
             f"{publication}, {date}, {url}."
         )
-
-
-    # --------------------------------------------------------
-    # Harvard
-    # --------------------------------------------------------
 
     elif style == "Harvard":
 
@@ -494,18 +523,12 @@ def generate_citation(
             f"{publication}. Available at: {url}."
         )
 
-
-    # --------------------------------------------------------
-    # Chicago
-    # --------------------------------------------------------
-
     elif style == "Chicago":
 
         citation = (
             f'{author}. "{title}." '
             f"{publication}, {date}. {url}."
         )
-
 
     else:
 
@@ -514,19 +537,110 @@ def generate_citation(
             f"{publication}. {date}. {url}"
         )
 
-
     return citation
 
 
 # ============================================================
-# FORMAT SENTIMENT FOR DOWNLOAD
+# PDF GENERATOR
 # ============================================================
 
-def sentiment_download_text(result):
+def create_pdf(title, content):
 
-    return f"""
-ARTICLE SENTIMENT ANALYSIS
+    buffer = BytesIO()
 
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "PDFTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        spaceAfter=20
+    )
+
+    heading_style = ParagraphStyle(
+        "PDFHeading",
+        parent=styles["Heading2"],
+        spaceBefore=12,
+        spaceAfter=8
+    )
+
+    body_style = ParagraphStyle(
+        "PDFBody",
+        parent=styles["BodyText"],
+        leading=15,
+        spaceAfter=8
+    )
+
+    story = []
+
+    story.append(
+        Paragraph(
+            html.escape(title),
+            title_style
+        )
+    )
+
+    for line in content.splitlines():
+
+        line = line.strip()
+
+        if not line:
+
+            story.append(
+                Spacer(1, 6)
+            )
+
+            continue
+
+        clean_line = line.replace(
+            "**",
+            ""
+        )
+
+        if (
+            clean_line.isupper()
+            and len(clean_line) < 80
+        ):
+
+            story.append(
+                Paragraph(
+                    html.escape(clean_line),
+                    heading_style
+                )
+            )
+
+        else:
+
+            story.append(
+                Paragraph(
+                    html.escape(clean_line),
+                    body_style
+                )
+            )
+
+    document.build(story)
+
+    buffer.seek(0)
+
+    return buffer.getvalue()
+
+
+# ============================================================
+# SENTIMENT PDF
+# ============================================================
+
+def create_sentiment_pdf(result):
+
+    content = f"""
 Detected Language:
 {result.get("language", "Unknown")}
 
@@ -541,24 +655,60 @@ Positive Score:
 
 Negative Score:
 {result["negative"]:.2f}%
-
 """
 
+    return create_pdf(
+        "Article Sentiment Analysis",
+        content
+    )
+
 
 # ============================================================
-# FORMAT FULL ANALYSIS FOR DOWNLOAD
+# SUMMARY PDF
 # ============================================================
 
-def full_analysis_download_text(
+def create_summary_pdf(summary):
+
+    return create_pdf(
+        "Article Summary",
+        summary
+    )
+
+
+# ============================================================
+# PARAPHRASED TEXT PDF
+# ============================================================
+
+def create_paraphrase_pdf(
+    paraphrased_text,
+    style
+):
+
+    content = f"""
+Paraphrasing Style:
+{style}
+
+PARAPHRASED TEXT
+
+{paraphrased_text}
+"""
+
+    return create_pdf(
+        "Paraphrased Article",
+        content
+    )
+
+
+# ============================================================
+# FULL ANALYSIS PDF
+# ============================================================
+
+def create_full_analysis_pdf(
     sentiment_result,
     summary_result
 ):
 
-    return f"""
-ARTICLE ANALYSIS
-
-========================================
-
+    content = f"""
 SENTIMENT ANALYSIS
 
 Detected Language:
@@ -574,20 +724,46 @@ Positive Score:
 {sentiment_result["positive"]:.2f}%
 
 Negative Score:
-{sentiment_result["negative"]:.2f}%
+{sentiment_result["negative"]:.2f}
 
-
-========================================
 
 ARTICLE SUMMARY
 
 {summary_result}
-
 """
+
+    return create_pdf(
+        "Full Article Analysis",
+        content
+    )
 
 
 # ============================================================
-# HEADER
+# CITATION PDF
+# ============================================================
+
+def create_citation_pdf(
+    citation,
+    style
+):
+
+    content = f"""
+Citation Style:
+{style}
+
+GENERATED CITATION
+
+{citation}
+"""
+
+    return create_pdf(
+        "Article Citation",
+        content
+    )
+
+
+# ============================================================
+# APPLICATION HEADER
 # ============================================================
 
 st.title("Article Analyzer")
@@ -598,15 +774,16 @@ st.markdown(
 
 
 # ============================================================
-# TABS
+# APPLICATION TABS
 # ============================================================
 
-tab1, tab2, tab3, tab4 = st.tabs(
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
         "Sentiment Analysis",
         "Summarize",
         "Full Analysis",
-        "Citation Generator"
+        "Citation Generator",
+        "Paraphraser"
     ]
 )
 
@@ -619,7 +796,6 @@ with tab1:
 
     st.subheader("Sentiment Analysis")
 
-
     sentiment_input = st.text_area(
         "Article",
         height=300,
@@ -627,19 +803,16 @@ with tab1:
         key="sentiment_input"
     )
 
-
     if st.button(
         "Analyze Sentiment",
         key="sentiment_button"
     ):
-
 
         if not sentiment_input.strip():
 
             st.warning(
                 "Please paste an article."
             )
-
 
         else:
 
@@ -651,132 +824,96 @@ with tab1:
                     sentiment_input
                 )
 
-
             if "error" in result:
 
                 st.error(
                     result["error"]
                 )
 
-
             else:
 
-                language = result["language"]
-
-                sentiment = result["sentiment"]
-
-                confidence = result["confidence"]
-
-                positive = result["positive"]
-
-                negative = result["negative"]
-
-
                 st.caption(
-                    f"Detected Language: {language}"
+                    f"Detected Language: "
+                    f"{result['language']}"
                 )
 
-
-                # Overall sentiment
-
-                if sentiment == "POSITIVE":
+                if result["sentiment"] == "POSITIVE":
 
                     st.success(
-                        f"Overall Sentiment: {sentiment}"
+                        "Overall Sentiment: POSITIVE"
                     )
 
                 else:
 
                     st.error(
-                        f"Overall Sentiment: {sentiment}"
+                        "Overall Sentiment: NEGATIVE"
                     )
 
-
-                # Scores
-
                 col1, col2, col3 = st.columns(3)
-
 
                 with col1:
 
                     st.metric(
                         "Confidence",
-                        f"{confidence:.2f}%"
+                        f"{result['confidence']:.2f}%"
                     )
-
 
                 with col2:
 
                     st.metric(
                         "Positive",
-                        f"{positive:.2f}%"
+                        f"{result['positive']:.2f}%"
                     )
-
 
                 with col3:
 
                     st.metric(
                         "Negative",
-                        f"{negative:.2f}%"
+                        f"{result['negative']:.2f}%"
                     )
-
-
-                # Breakdown
 
                 st.subheader(
                     "Sentiment Breakdown"
                 )
 
-
                 st.write(
-                    f"Positive: {positive:.2f}%"
+                    f"Positive: "
+                    f"{result['positive']:.2f}%"
                 )
-
 
                 st.progress(
-                    min(
-                        positive / 100,
-                        1.0
-                    )
+                    int(result["positive"])
                 )
-
 
                 st.write(
-                    f"Negative: {negative:.2f}%"
+                    f"Negative: "
+                    f"{result['negative']:.2f}%"
                 )
-
 
                 st.progress(
-                    min(
-                        negative / 100,
-                        1.0
-                    )
+                    int(result["negative"])
                 )
 
-
-                # Download
-
-                download_text = sentiment_download_text(
+                sentiment_pdf = create_sentiment_pdf(
                     result
                 )
 
-
                 st.download_button(
-                    label="Download Sentiment Analysis",
-                    data=download_text,
-                    file_name="sentiment_analysis.txt",
-                    mime="text/plain"
+                    label="Download Sentiment Analysis PDF",
+                    data=sentiment_pdf,
+                    file_name="sentiment_analysis.pdf",
+                    mime="application/pdf",
+                    key="download_sentiment_pdf"
                 )
 
 
 # ============================================================
-# SUMMARIZE
+# SUMMARY
 # ============================================================
 
 with tab2:
 
     st.subheader("Article Summary")
-
 
     summary_input = st.text_area(
         "Article",
@@ -785,19 +922,16 @@ with tab2:
         key="summary_input"
     )
 
-
     if st.button(
         "Generate Summary",
         key="summary_button"
     ):
-
 
         if not summary_input.strip():
 
             st.warning(
                 "Please paste an article."
             )
-
 
         else:
 
@@ -809,22 +943,20 @@ with tab2:
                     summary_input
                 )
 
-
-            st.subheader("Summary")
-
-
             st.markdown(
                 summary_result
             )
 
-
-            # Download summary
+            summary_pdf = create_summary_pdf(
+                summary_result
+            )
 
             st.download_button(
-                label="Download Summary",
-                data=summary_result,
-                file_name="article_summary.txt",
-                mime="text/plain"
+                label="Download Summary PDF",
+                data=summary_pdf,
+                file_name="article_summary.pdf",
+                mime="application/pdf",
+                key="download_summary_pdf"
             )
 
 
@@ -836,7 +968,6 @@ with tab3:
 
     st.subheader("Full Article Analysis")
 
-
     full_input = st.text_area(
         "Article",
         height=300,
@@ -844,12 +975,10 @@ with tab3:
         key="full_input"
     )
 
-
     if st.button(
         "Analyze Article",
         key="full_button"
     ):
-
 
         if not full_input.strip():
 
@@ -857,30 +986,15 @@ with tab3:
                 "Please paste an article."
             )
 
-
         else:
 
-            # Sentiment
-
             with st.spinner(
-                "Analyzing sentiment..."
+                "Analyzing article..."
             ):
 
                 sentiment_result = analyze_sentiment(
                     full_input
                 )
-
-
-            # Summary
-
-            with st.spinner(
-                "Generating summary..."
-            ):
-
-                summary_result = summarize_article(
-                    full_input
-                )
-
 
             if "error" in sentiment_result:
 
@@ -888,28 +1002,20 @@ with tab3:
                     sentiment_result["error"]
                 )
 
-
             else:
 
-                language = sentiment_result["language"]
+                with st.spinner(
+                    "Generating summary..."
+                ):
 
-                sentiment = sentiment_result["sentiment"]
-
-                confidence = sentiment_result["confidence"]
-
-                positive = sentiment_result["positive"]
-
-                negative = sentiment_result["negative"]
-
+                    summary_result = summarize_article(
+                        full_input
+                    )
 
                 st.caption(
-                    f"Detected Language: {language}"
+                    f"Detected Language: "
+                    f"{sentiment_result['language']}"
                 )
-
-
-                # ------------------------------------------------
-                # SENTIMENT
-                # ------------------------------------------------
 
                 st.divider()
 
@@ -917,81 +1023,65 @@ with tab3:
                     "Sentiment Analysis"
                 )
 
-
-                if sentiment == "POSITIVE":
+                if (
+                    sentiment_result["sentiment"]
+                    == "POSITIVE"
+                ):
 
                     st.success(
-                        f"Overall Sentiment: {sentiment}"
+                        "Overall Sentiment: POSITIVE"
                     )
 
                 else:
 
                     st.error(
-                        f"Overall Sentiment: {sentiment}"
+                        "Overall Sentiment: NEGATIVE"
                     )
 
-
                 col1, col2, col3 = st.columns(3)
-
 
                 with col1:
 
                     st.metric(
                         "Confidence",
-                        f"{confidence:.2f}%"
+                        f"{sentiment_result['confidence']:.2f}%"
                     )
-
 
                 with col2:
 
                     st.metric(
                         "Positive",
-                        f"{positive:.2f}%"
+                        f"{sentiment_result['positive']:.2f}%"
                     )
-
 
                 with col3:
 
                     st.metric(
                         "Negative",
-                        f"{negative:.2f}%"
+                        f"{sentiment_result['negative']:.2f}%"
                     )
-
 
                 st.subheader(
                     "Sentiment Breakdown"
                 )
 
-
                 st.write(
-                    f"Positive: {positive:.2f}%"
+                    f"Positive: "
+                    f"{sentiment_result['positive']:.2f}%"
                 )
-
 
                 st.progress(
-                    min(
-                        positive / 100,
-                        1.0
-                    )
+                    int(sentiment_result["positive"])
                 )
-
 
                 st.write(
-                    f"Negative: {negative:.2f}%"
+                    f"Negative: "
+                    f"{sentiment_result['negative']:.2f}%"
                 )
-
 
                 st.progress(
-                    min(
-                        negative / 100,
-                        1.0
-                    )
+                    int(sentiment_result["negative"])
                 )
-
-
-                # ------------------------------------------------
-                # SUMMARY
-                # ------------------------------------------------
 
                 st.divider()
 
@@ -999,29 +1089,21 @@ with tab3:
                     "Article Summary"
                 )
 
-
                 st.markdown(
                     summary_result
                 )
 
-
-                # ------------------------------------------------
-                # DOWNLOAD FULL ANALYSIS
-                # ------------------------------------------------
-
-                full_download = (
-                    full_analysis_download_text(
-                        sentiment_result,
-                        summary_result
-                    )
+                full_pdf = create_full_analysis_pdf(
+                    sentiment_result,
+                    summary_result
                 )
 
-
                 st.download_button(
-                    label="Download Full Analysis",
-                    data=full_download,
-                    file_name="full_article_analysis.txt",
-                    mime="text/plain"
+                    label="Download Full Analysis PDF",
+                    data=full_pdf,
+                    file_name="full_article_analysis.pdf",
+                    mime="application/pdf",
+                    key="download_full_pdf"
                 )
 
 
@@ -1033,36 +1115,30 @@ with tab4:
 
     st.subheader("Citation Generator")
 
-
     title = st.text_input(
         "Article Title",
         placeholder="Enter the article title"
     )
-
 
     author = st.text_input(
         "Author",
         placeholder="Enter the author name"
     )
 
-
     publication = st.text_input(
         "Website or Publication",
         placeholder="Enter the website or publication"
     )
-
 
     date = st.text_input(
         "Publication Date",
         placeholder="Example: 10 August 2026"
     )
 
-
     url = st.text_input(
         "Article URL",
         placeholder="Paste the article URL"
     )
-
 
     style = st.selectbox(
         "Citation Style",
@@ -1074,19 +1150,16 @@ with tab4:
         ]
     )
 
-
     if st.button(
         "Generate Citation",
         key="citation_button"
     ):
-
 
         if not title:
 
             st.warning(
                 "Please enter the article title."
             )
-
 
         else:
 
@@ -1099,11 +1172,9 @@ with tab4:
                 style
             )
 
-
             st.subheader(
                 "Generated Citation"
             )
-
 
             st.text_area(
                 "Citation",
@@ -1111,12 +1182,91 @@ with tab4:
                 height=150
             )
 
+            citation_pdf = create_citation_pdf(
+                citation,
+                style
+            )
 
             st.download_button(
-                label="Download Citation",
-                data=citation,
-                file_name="citation.txt",
-                mime="text/plain"
+                label="Download Citation PDF",
+                data=citation_pdf,
+                file_name="article_citation.pdf",
+                mime="application/pdf",
+                key="download_citation_pdf"
+            )
+
+
+# ============================================================
+# PARAPHRASER
+# ============================================================
+
+with tab5:
+
+    st.subheader("AI Paraphraser")
+
+    st.markdown(
+        "Rewrite text while preserving its original meaning."
+    )
+
+    paraphrase_input = st.text_area(
+        "Text",
+        height=300,
+        placeholder="Paste the text you want to paraphrase...",
+        key="paraphrase_input"
+    )
+
+    paraphrase_style = st.selectbox(
+        "Paraphrasing Style",
+        [
+            "Standard",
+            "Simple",
+            "Professional",
+            "Academic",
+            "Concise"
+        ]
+    )
+
+    if st.button(
+        "Paraphrase Text",
+        key="paraphrase_button"
+    ):
+
+        if not paraphrase_input.strip():
+
+            st.warning(
+                "Please paste text to paraphrase."
+            )
+
+        else:
+
+            with st.spinner(
+                "Paraphrasing text..."
+            ):
+
+                paraphrased_result = paraphrase_article(
+                    paraphrase_input,
+                    paraphrase_style
+                )
+
+            st.subheader(
+                "Paraphrased Text"
+            )
+
+            st.markdown(
+                paraphrased_result
+            )
+
+            paraphrase_pdf = create_paraphrase_pdf(
+                paraphrased_result,
+                paraphrase_style
+            )
+
+            st.download_button(
+                label="Download Paraphrased Text PDF",
+                data=paraphrase_pdf,
+                file_name="paraphrased_article.pdf",
+                mime="application/pdf",
+                key="download_paraphrase_pdf"
             )
 
 
