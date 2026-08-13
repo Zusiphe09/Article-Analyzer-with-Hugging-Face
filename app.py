@@ -1,12 +1,13 @@
 import os
+from io import BytesIO
+
 import requests
 import streamlit as st
 from transformers import pipeline
+
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.enums import TA_LEFT
-from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 
 
 # ============================================================
@@ -15,7 +16,6 @@ from io import BytesIO
 
 st.set_page_config(
     page_title="Article Analyzer",
-    page_icon=None,
     layout="wide"
 )
 
@@ -25,18 +25,89 @@ st.set_page_config(
 # ============================================================
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 MODEL = "openrouter/free"
 
 
 # ============================================================
-# GET OPENROUTER API KEY
+# CUSTOM CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .main-title {
+        font-size: 48px;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+
+    .main-description {
+        font-size: 18px;
+        margin-bottom: 30px;
+    }
+
+    .section-title {
+        font-size: 32px;
+        font-weight: 700;
+        margin-top: 10px;
+        margin-bottom: 8px;
+    }
+
+    .section-description {
+        font-size: 16px;
+        margin-bottom: 20px;
+    }
+
+    .sentiment-positive {
+        padding: 18px;
+        border-radius: 10px;
+        background-color: #e8f7ee;
+        color: #16803c;
+        font-size: 20px;
+        font-weight: 600;
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+
+    .sentiment-negative {
+        padding: 18px;
+        border-radius: 10px;
+        background-color: #fdecec;
+        color: #c62828;
+        font-size: 20px;
+        font-weight: 600;
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+
+    .result-box {
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #dddddd;
+        background-color: #fafafa;
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# API KEY
 # ============================================================
 
 def get_api_key():
 
     try:
+
         if "OPENROUTER_API_KEY" in st.secrets:
             return st.secrets["OPENROUTER_API_KEY"]
+
     except Exception:
         pass
 
@@ -44,7 +115,7 @@ def get_api_key():
 
 
 # ============================================================
-# HUGGING FACE SENTIMENT MODEL
+# LOAD HUGGING FACE SENTIMENT MODEL
 # ============================================================
 
 @st.cache_resource
@@ -60,7 +131,7 @@ sentiment_pipeline = load_sentiment_model()
 
 
 # ============================================================
-# OPENROUTER AI FUNCTION
+# OPENROUTER AI
 # ============================================================
 
 def ask_ai(prompt):
@@ -68,6 +139,7 @@ def ask_ai(prompt):
     api_key = get_api_key()
 
     if not api_key:
+
         return "Error: OPENROUTER_API_KEY is not set."
 
     headers = {
@@ -124,13 +196,14 @@ def analyze_sentiment(article):
 
         return {
             "sentiment": "No article provided",
-            "confidence": 0,
-            "positive": 0,
-            "negative": 0
+            "confidence": 0.0,
+            "positive": 0.0,
+            "negative": 0.0
         }
 
     try:
 
+        # The current Hugging Face model has a 512-token limit.
         text = article[:512]
 
         results = sentiment_pipeline(
@@ -139,7 +212,7 @@ def analyze_sentiment(article):
             truncation=True
         )
 
-        if isinstance(results[0], list):
+        if results and isinstance(results[0], list):
             results = results[0]
 
         positive_score = 0.0
@@ -177,9 +250,9 @@ def analyze_sentiment(article):
 
         return {
             "sentiment": f"Error: {str(e)}",
-            "confidence": 0,
-            "positive": 0,
-            "negative": 0
+            "confidence": 0.0,
+            "positive": 0.0,
+            "negative": 0.0
         }
 
 
@@ -200,14 +273,14 @@ Summarize the following article clearly and concisely.
 
 Write the summary in the same language as the original article.
 
-Requirements:
+Identify the main topic and explain the most important points.
 
-- Identify the main topic.
-- Highlight the most important points.
-- Mention important benefits or opportunities.
-- Mention important challenges or risks.
-- Do not invent information.
-- Keep the summary easy to read.
+Mention important benefits, opportunities, challenges, or risks
+when they are present in the article.
+
+Do not invent information.
+
+Keep the summary easy to read.
 
 Article:
 
@@ -218,12 +291,12 @@ Article:
 
 
 # ============================================================
-# ARTICLE PARAPHRASER
+# PARAPHRASER
 # ============================================================
 
-def paraphrase_article(article):
+def paraphrase_article(text):
 
-    if not article or not article.strip():
+    if not text or not text.strip():
 
         return "Please paste text to paraphrase."
 
@@ -234,16 +307,16 @@ Rewrite the following text while preserving its original meaning.
 
 Rules:
 
-- Keep the original meaning.
+- Preserve the original meaning.
 - Do not add information.
 - Do not remove important information.
-- Use natural and clear language.
-- Improve sentence structure where appropriate.
+- Improve clarity and sentence structure.
+- Use natural language.
 - Keep the same language as the original text.
 
 Text:
 
-{article}
+{text}
 """
 
     return ask_ai(prompt)
@@ -253,14 +326,20 @@ Text:
 # CITATION GENERATOR
 # ============================================================
 
-def generate_citation(title, author, year, url, style):
+def generate_citation(
+    title,
+    author,
+    year,
+    url,
+    style
+):
 
     if not title.strip():
 
         return "Please enter the article title."
 
     prompt = f"""
-Generate an academic citation using the information below.
+Generate an academic citation using the information provided below.
 
 Citation style:
 {style}
@@ -271,7 +350,7 @@ Article title:
 Author:
 {author}
 
-Year:
+Publication year:
 {year}
 
 URL:
@@ -279,9 +358,13 @@ URL:
 
 Instructions:
 
-- Generate only the citation.
-- Do not invent missing information.
-- Follow the requested citation style.
+Generate the citation using only the information provided.
+
+Do not invent missing information.
+
+Follow the requested citation style.
+
+Return only the citation.
 """
 
     return ask_ai(prompt)
@@ -326,13 +409,15 @@ def create_pdf(title, content):
     title_style = styles["Title"]
     body_style = styles["BodyText"]
 
-    body_style.alignment = TA_LEFT
     body_style.leading = 15
 
     story = []
 
     story.append(
-        Paragraph(title, title_style)
+        Paragraph(
+            title,
+            title_style
+        )
     )
 
     story.append(
@@ -371,13 +456,19 @@ def create_pdf(title, content):
 
 
 # ============================================================
-# HEADER
+# MAIN HEADER
 # ============================================================
 
-st.title("Article Analyzer")
+st.markdown(
+    '<div class="main-title">Article Analyzer</div>',
+    unsafe_allow_html=True
+)
 
-st.write(
-    "Paste an article below and choose an analysis option."
+st.markdown(
+    '<div class="main-description">'
+    'Paste an article below and choose an analysis option.'
+    '</div>',
+    unsafe_allow_html=True
 )
 
 
@@ -397,39 +488,53 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 
 
 # ============================================================
-# SENTIMENT ANALYSIS TAB
+# TAB 1 — SENTIMENT ANALYSIS
 # ============================================================
 
 with tab1:
 
-    st.header("Sentiment Analysis")
+    st.markdown(
+        '<div class="section-title">Sentiment Analysis</div>',
+        unsafe_allow_html=True
+    )
 
-    st.write(
-        "Analyze the sentiment of an article and view positive and negative confidence scores."
+    st.markdown(
+        '<div class="section-description">'
+        'Analyze the sentiment of an article and view positive and negative confidence scores.'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     sentiment_input = st.text_area(
         "Article",
         placeholder="Paste your article here...",
         height=300,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="sentiment_article"
     )
 
-    analyze_button = st.button(
-        "Analyze Sentiment"
+    analyze_sentiment_button = st.button(
+        "Analyze Sentiment",
+        key="analyze_sentiment_button"
     )
 
-    if analyze_button:
+    if analyze_sentiment_button:
 
         if not sentiment_input.strip():
 
-            st.warning("Please paste an article.")
+            st.warning(
+                "Please paste an article."
+            )
 
         else:
 
-            result = analyze_sentiment(
-                sentiment_input
-            )
+            with st.spinner(
+                "Analyzing sentiment..."
+            ):
+
+                result = analyze_sentiment(
+                    sentiment_input
+                )
 
             sentiment = result["sentiment"]
             confidence = result["confidence"]
@@ -438,15 +543,29 @@ with tab1:
 
             if sentiment == "POSITIVE":
 
-                st.success(
-                    f"Overall Sentiment: {sentiment}"
+                st.markdown(
+                    f"""
+                    <div class="sentiment-positive">
+                    Overall Sentiment: {sentiment}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            elif sentiment == "NEGATIVE":
+
+                st.markdown(
+                    f"""
+                    <div class="sentiment-negative">
+                    Overall Sentiment: {sentiment}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
             else:
 
-                st.error(
-                    f"Overall Sentiment: {sentiment}"
-                )
+                st.error(sentiment)
 
             col1, col2, col3 = st.columns(3)
 
@@ -501,40 +620,49 @@ Positive Sentiment: {positive:.2f}%
 Negative Sentiment: {negative:.2f}%
 """
 
-            pdf = create_pdf(
+            pdf_data = create_pdf(
                 "Sentiment Analysis",
                 pdf_content
             )
 
             st.download_button(
                 "Download Sentiment Analysis PDF",
-                data=pdf,
+                data=pdf_data,
                 file_name="sentiment_analysis.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key="download_sentiment_pdf"
             )
 
 
 # ============================================================
-# SUMMARIZATION TAB
+# TAB 2 — SUMMARIZE
 # ============================================================
 
 with tab2:
 
-    st.header("Article Summary")
+    st.markdown(
+        '<div class="section-title">Article Summary</div>',
+        unsafe_allow_html=True
+    )
 
-    st.write(
-        "Generate a clear and concise summary of your article."
+    st.markdown(
+        '<div class="section-description">'
+        'Generate a clear and concise summary of your article.'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     summary_input = st.text_area(
         "Article",
         placeholder="Paste your article here...",
         height=300,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="summary_article"
     )
 
     summary_button = st.button(
-        "Generate Summary"
+        "Generate Summary",
+        key="summary_button"
     )
 
     if summary_button:
@@ -555,42 +683,53 @@ with tab2:
                     summary_input
                 )
 
-            st.markdown(summary)
+            st.markdown(
+                summary
+            )
 
-            pdf = create_pdf(
+            summary_pdf = create_pdf(
                 "Article Summary",
                 summary
             )
 
             st.download_button(
                 "Download Summary PDF",
-                data=pdf,
+                data=summary_pdf,
                 file_name="article_summary.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key="download_summary_pdf"
             )
 
 
 # ============================================================
-# FULL ANALYSIS TAB
+# TAB 3 — FULL ANALYSIS
 # ============================================================
 
 with tab3:
 
-    st.header("Full Article Analysis")
+    st.markdown(
+        '<div class="section-title">Full Article Analysis</div>',
+        unsafe_allow_html=True
+    )
 
-    st.write(
-        "Perform both sentiment analysis and AI-powered article summarization."
+    st.markdown(
+        '<div class="section-description">'
+        'Perform sentiment analysis and generate an AI-powered article summary.'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     full_input = st.text_area(
         "Article",
         placeholder="Paste your article here...",
         height=300,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="full_analysis_article"
     )
 
     full_button = st.button(
-        "Analyze Article"
+        "Analyze Article",
+        key="full_analysis_button"
     )
 
     if full_button:
@@ -611,44 +750,74 @@ with tab3:
                     full_input
                 )
 
-            st.subheader(
-                "Sentiment Analysis"
-            )
+            if sentiment:
 
-            st.write(
-                f"Overall Sentiment: {sentiment['sentiment']}"
-            )
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-
-                st.metric(
-                    "Confidence",
-                    f"{sentiment['confidence']:.2f}%"
+                st.subheader(
+                    "Sentiment Analysis"
                 )
 
-            with col2:
-
-                st.metric(
-                    "Positive",
-                    f"{sentiment['positive']:.2f}%"
+                st.write(
+                    f"Overall Sentiment: {sentiment['sentiment']}"
                 )
 
-            with col3:
+                col1, col2, col3 = st.columns(3)
 
-                st.metric(
-                    "Negative",
-                    f"{sentiment['negative']:.2f}%"
+                with col1:
+
+                    st.metric(
+                        "Confidence",
+                        f"{sentiment['confidence']:.2f}%"
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Positive",
+                        f"{sentiment['positive']:.2f}%"
+                    )
+
+                with col3:
+
+                    st.metric(
+                        "Negative",
+                        f"{sentiment['negative']:.2f}%"
+                    )
+
+                st.subheader(
+                    "Sentiment Breakdown"
+                )
+
+                st.write(
+                    f"Positive: {sentiment['positive']:.2f}%"
+                )
+
+                st.progress(
+                    min(
+                        sentiment["positive"] / 100,
+                        1.0
+                    )
+                )
+
+                st.write(
+                    f"Negative: {sentiment['negative']:.2f}%"
+                )
+
+                st.progress(
+                    min(
+                        sentiment["negative"] / 100,
+                        1.0
+                    )
                 )
 
             st.subheader(
                 "Article Summary"
             )
 
-            st.markdown(summary)
+            st.markdown(
+                summary
+            )
 
-            pdf_content = f"""
+            full_pdf_content = f"""
 SENTIMENT ANALYSIS
 
 Overall Sentiment:
@@ -669,45 +838,56 @@ ARTICLE SUMMARY
 {summary}
 """
 
-            pdf = create_pdf(
+            full_pdf = create_pdf(
                 "Full Article Analysis",
-                pdf_content
+                full_pdf_content
             )
 
             st.download_button(
                 "Download Full Analysis PDF",
-                data=pdf,
+                data=full_pdf,
                 file_name="full_article_analysis.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key="download_full_analysis_pdf"
             )
 
 
 # ============================================================
-# CITATION GENERATOR TAB
+# TAB 4 — CITATION GENERATOR
 # ============================================================
 
 with tab4:
 
-    st.header("Citation Generator")
+    st.markdown(
+        '<div class="section-title">Citation Generator</div>',
+        unsafe_allow_html=True
+    )
 
-    st.write(
-        "Generate an academic citation for an article."
+    st.markdown(
+        '<div class="section-description">'
+        'Generate an academic citation for an article.'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     citation_title = st.text_input(
-        "Article Title"
+        "Article Title",
+        key="citation_title"
     )
 
     citation_author = st.text_input(
-        "Author"
+        "Author",
+        key="citation_author"
     )
 
     citation_year = st.text_input(
-        "Publication Year"
+        "Publication Year",
+        key="citation_year"
     )
 
     citation_url = st.text_input(
-        "Article URL"
+        "Article URL",
+        key="citation_url"
     )
 
     citation_style = st.selectbox(
@@ -717,67 +897,88 @@ with tab4:
             "MLA 9",
             "Harvard",
             "Chicago"
-        ]
+        ],
+        key="citation_style"
     )
 
     citation_button = st.button(
-        "Generate Citation"
+        "Generate Citation",
+        key="citation_button"
     )
 
     if citation_button:
 
-        with st.spinner(
-            "Generating citation..."
-        ):
+        if not citation_title.strip():
 
-            citation = generate_citation(
-                citation_title,
-                citation_author,
-                citation_year,
-                citation_url,
-                citation_style
+            st.warning(
+                "Please enter the article title."
             )
 
-        st.subheader(
-            "Generated Citation"
-        )
+        else:
 
-        st.write(citation)
+            with st.spinner(
+                "Generating citation..."
+            ):
 
-        pdf = create_pdf(
-            "Generated Citation",
-            citation
-        )
+                citation = generate_citation(
+                    citation_title,
+                    citation_author,
+                    citation_year,
+                    citation_url,
+                    citation_style
+                )
 
-        st.download_button(
-            "Download Citation PDF",
-            data=pdf,
-            file_name="citation.pdf",
-            mime="application/pdf"
-        )
+            st.subheader(
+                "Generated Citation"
+            )
+
+            st.markdown(
+                citation
+            )
+
+            citation_pdf = create_pdf(
+                "Generated Citation",
+                citation
+            )
+
+            st.download_button(
+                "Download Citation PDF",
+                data=citation_pdf,
+                file_name="citation.pdf",
+                mime="application/pdf",
+                key="download_citation_pdf"
+            )
 
 
 # ============================================================
-# PARAPHRASER TAB
+# TAB 5 — PARAPHRASER
 # ============================================================
 
 with tab5:
 
-    st.header("AI Paraphraser")
+    st.markdown(
+        '<div class="section-title">AI Paraphraser</div>',
+        unsafe_allow_html=True
+    )
 
-    st.write(
-        "Rewrite text while preserving its original meaning."
+    st.markdown(
+        '<div class="section-description">'
+        'Rewrite text while preserving its original meaning.'
+        '</div>',
+        unsafe_allow_html=True
     )
 
     paraphrase_input = st.text_area(
         "Text",
         placeholder="Paste your text here...",
         height=300,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="paraphrase_text"
     )
 
     paraphrase_button = st.button(
-        "Paraphrase Text"
+        "Paraphrase Text",
+        key="paraphrase_button"
     )
 
     if paraphrase_button:
@@ -806,16 +1007,17 @@ with tab5:
                 paraphrased
             )
 
-            pdf = create_pdf(
+            paraphrase_pdf = create_pdf(
                 "Paraphrased Text",
                 paraphrased
             )
 
             st.download_button(
                 "Download Paraphrased PDF",
-                data=pdf,
+                data=paraphrase_pdf,
                 file_name="paraphrased_text.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key="download_paraphrase_pdf"
             )
 
 
